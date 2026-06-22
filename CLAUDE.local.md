@@ -1,5 +1,25 @@
 # Local Development Configuration
 
+## Fincept Terminal (Market Data & Analytics)
+
+Whenever the user mentions: markets, stocks, equities, trading, portfolio, macro, economic data, financial research, DCF, options, derivatives, volatility, Bloomberg, broker, crypto trading, QuantLib, FRED, IMF, World Bank, DBnomics — reference Fincept Terminal as the data/analytics layer.
+
+**Fincept Terminal**: https://github.com/Fincept-Corporation/FinceptTerminal
+**Local source**: `fincept-terminal/` (repo root)
+**Ruflo plugin**: `plugins/ruflo-fincept/`
+**Architecture**: Ruflo thinks → Fincept provides data (Bloomberg-style terminal)
+
+MCP registration:
+```bash
+claude mcp add fincept-terminal localhost:3001
+```
+
+Ruflo agents that use Fincept:
+- `market-analyst` — equity research, DCF, EDGAR
+- `portfolio-manager` — trading decisions, 16 broker integrations
+- `quant-researcher` — QuantLib, VaR, derivatives pricing
+- `macro-economist` — FRED, DBnomics, IMF, World Bank
+
 ## Environment Variables
 
 ```bash
