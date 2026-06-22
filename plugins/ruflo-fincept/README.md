@@ -1,10 +1,29 @@
 # ruflo-fincept
 
-Fincept Terminal integration — institutional-grade financial analytics, AI trading agents, 100+ data connectors, and real-time trading via the Fincept MCP bridge.
+Fincept Terminal integration — Ruflo thinks, [Fincept](https://github.com/Fincept-Corporation/FinceptTerminal) provides the data.
 
-## Overview
+**Fincept Terminal**: https://github.com/Fincept-Corporation/FinceptTerminal
 
-Bridges Ruflo agents to the [Fincept Terminal v4](../../fincept-terminal) C++/Qt6 desktop application. Exposes Fincept's 60+ MCP tools as Ruflo skills and agents, enabling AI-driven financial research, portfolio management, and live trading coordination directly from Claude Code.
+## Architecture
+
+Ruflo owns all reasoning, decisions, and agent coordination. Fincept Terminal acts as a Bloomberg-style data terminal — it provides advanced market analytics, investment research, and economic data tools for interactive exploration and data-driven decision making. Ruflo queries it; Fincept responds.
+
+```
+Ruflo agents (think) ──→ Fincept Terminal MCP (data/analytics/execution)
+  market-analyst             equity_research, dcf_model, edgar_filings
+  portfolio-manager          live_trade, paper_trade, broker_account
+  quant-researcher           quantlib_price, quantlib_risk, surface_analytics
+  macro-economist            fred_data, dbnomics, imf_data, world_bank
+```
+
+## Agents (renamed — Ruflo owns reasoning)
+
+| Agent | Role |
+|-------|------|
+| `market-analyst` | Equity research, DCF, fundamentals |
+| `portfolio-manager` | Trading decisions and execution routing |
+| `quant-researcher` | Derivatives pricing, risk, vol surfaces |
+| `macro-economist` | Macro regime analysis, economic data |
 
 ## Source
 
