@@ -1,0 +1,25 @@
+{
+  "name": "ruflo-trump-scanner",
+  "version": "1.0.0",
+  "description": "Real-time Trump trade scanner — Truth Social keyword alerts + USASpending.gov contract watcher",
+  "type": "module",
+  "main": "src/index.ts",
+  "scripts": {
+    "scan": "node scripts/scan-loop.mjs",
+    "contracts": "node scripts/contract-loop.mjs",
+    "test": "node --experimental-vm-modules node_modules/.bin/jest"
+  },
+  "keywords": ["trump", "trade", "scanner", "truth-social", "usaspending", "alerts"],
+  "license": "MIT",
+  "dependencies": {
+    "node-cron": "^3.0.3",
+    "nodemailer": "^6.9.14",
+    "ws": "^8.18.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "@types/nodemailer": "^6.4.14",
+    "@types/ws": "^8.5.10",
+    "typescript": "^5.4.0"
+  }
+}
