@@ -1,0 +1,20 @@
+{
+  "name": "ruflo-trump-scanner",
+  "description": "Trump trade signal engine — Truth Social posts, Google News, USASpending.gov contract awards, and approval-poll movement, scored for market impact and dispatched to ntfy/email",
+  "version": "0.1.0",
+  "author": {
+    "name": "ruvnet",
+    "url": "https://github.com/ruvnet"
+  },
+  "homepage": "https://github.com/ruvnet/ruflo",
+  "license": "MIT",
+  "keywords": [
+    "ruflo",
+    "trump-scanner",
+    "trade-signals",
+    "truth-social",
+    "usaspending",
+    "approval-polls",
+    "market-data"
+  ]
+}
