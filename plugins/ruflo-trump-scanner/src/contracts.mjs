@@ -13,13 +13,10 @@ const ALERT_MIN_AMOUNT = 50_000_000;
 const DEFENSE_NAICS  = ['336411','336414','332992','332994','541330','336992'];
 const MEDICAL_NAICS  = ['325412','339112','339113','325414','334510'];
 const TECH_NAICS     = ['541511','541512','541513','541519','518210'];
-const ALL_NAICS      = [...DEFENSE_NAICS, ...MEDICAL_NAICS, ...TECH_NAICS];
-
-const NAICS_CATEGORY = {
-  ...Object.fromEntries(DEFENSE_NAICS.map(n => [n, 'defense'])),
-  ...Object.fromEntries(MEDICAL_NAICS.map(n => [n, 'medical'])),
-  ...Object.fromEntries(TECH_NAICS.map(n => [n, 'tech'])),
-};
+// NOTE: do not reintroduce a NAICS-code -> category lookup keyed on the API
+// response. USASpending returns 'NAICS Code' as null on contract rows, so any
+// such map silently drops every award. Category is derived from which
+// per-group query matched -- see NAICS_GROUPS / fetchRecentContracts below.
 
 const LARGE_CAP_EXCLUDE = [
   'lockheed martin','boeing','raytheon','northrop grumman','general dynamics',
@@ -33,18 +30,19 @@ function isLargeCap(name) {
   return LARGE_CAP_EXCLUDE.some(n => lower.includes(n));
 }
 
-export async function fetchRecentContracts(daysBack = 1) {
-  const end   = new Date();
-  const start = new Date(Date.now() - daysBack * 86_400_000);
-  const fmt   = d => d.toISOString().split('T')[0];
+const NAICS_GROUPS = {
+  defense: DEFENSE_NAICS,
+  medical: MEDICAL_NAICS,
+  tech:    TECH_NAICS,
+};
 
-  // Correct v2 API field names (snake_case, matching USASpending docs)
+async function queryAwards(naicsCodes, startDate, endDate) {
   const payload = {
     filters: {
-      time_period: [{ start_date: fmt(start), end_date: fmt(end) }],
+      time_period: [{ start_date: startDate, end_date: endDate }],
       award_type_codes: ['A', 'B', 'C', 'D'],
       award_amounts: [{ lower_bound: ALERT_MIN_AMOUNT }],
-      naics_codes: { require: ALL_NAICS },
+      naics_codes: { require: naicsCodes },
     },
     fields: [
       'Award ID',
@@ -70,32 +68,64 @@ export async function fetchRecentContracts(daysBack = 1) {
   });
 
   if (!resp.ok) throw new Error(`USASpending ${resp.status}: ${resp.statusText}`);
+  return (await resp.json()).results ?? [];
+}
 
-  const data = await resp.json();
+/**
+ * fetchRecentContracts(daysBack = 7)
+ *
+ * Two bugs made this return zero awards on every call since creation:
+ *
+ * 1. daysBack defaulted to 1 (and scan-loop passed 1 explicitly). USASpending
+ *    lags: a 24h window returns nothing, a 7d window returns results. Verified
+ *    1d -> 0, 7d -> 100 raw rows.
+ *
+ * 2. Category was derived from the row's 'NAICS Code' field, which the API
+ *    returns as NULL on every contract row -- even when naics_codes is used as
+ *    a server-side filter, so the rows genuinely are in-sector. That made
+ *    NAICS_CATEGORY[naicsCode] undefined and `if (!category) continue` discard
+ *    100% of results. This zeroed the poller at ANY window.
+ *
+ * Fixed by querying once per sector group, so category comes from which query
+ * matched rather than from a field the API won't populate. Costs 3 requests
+ * per poll (every 900s). Results are de-duplicated by Award ID, since a single
+ * award can match more than one group.
+ */
+export async function fetchRecentContracts(daysBack = 7) {
+  const end   = new Date();
+  const start = new Date(Date.now() - daysBack * 86_400_000);
+  const fmt   = d => d.toISOString().split('T')[0];
+
   const results = [];
+  const seenIds = new Set();
 
-  for (const row of data.results ?? []) {
-    const recipientName = String(row['Recipient Name'] ?? '');
-    const awardAmount   = Number(row['Award Amount']   ?? 0);
-    const naicsCode     = String(row['NAICS Code']     ?? '');
-    const category      = NAICS_CATEGORY[naicsCode];
+  for (const [category, naicsCodes] of Object.entries(NAICS_GROUPS)) {
+    const rows = await queryAwards(naicsCodes, fmt(start), fmt(end));
 
-    if (!category) continue;              // not a target sector
-    if (isLargeCap(recipientName)) continue; // already priced in
+    for (const row of rows) {
+      const recipientName = String(row['Recipient Name'] ?? '');
+      const awardAmount   = Number(row['Award Amount']   ?? 0);
+      const awardId       = String(row['Award ID']       ?? '');
 
-    results.push({
-      awardId:         String(row['Award ID']                       ?? ''),
-      recipientName,
-      awardAmount,
-      awardDate:       String(row['Start Date']                     ?? ''),
-      description:     String(row['Description']                    ?? '').slice(0, 300),
-      naicsCode,
-      naicsDescription:String(row['NAICS Description']             ?? ''),
-      recipientState:  String(row['Place of Performance State Code']?? ''),
-      agencyName:      String(row['Awarding Agency']               ?? ''),
-      category,
-      alert: awardAmount >= ALERT_MIN_AMOUNT,
-    });
+      if (!awardId || seenIds.has(awardId)) continue;   // same award, two groups
+      if (isLargeCap(recipientName)) continue;          // already priced in
+      seenIds.add(awardId);
+
+      results.push({
+        awardId,
+        recipientName,
+        awardAmount,
+        awardDate:       String(row['Start Date']                     ?? ''),
+        description:     String(row['Description']                    ?? '').slice(0, 300),
+        // Nullable server-side; retained when present, never used for routing.
+        naicsCode:       String(row['NAICS Code']                     ?? ''),
+        naicsDescription:String(row['NAICS Description']              ?? ''),
+        recipientState:  String(row['Place of Performance State Code']?? ''),
+        agencyName:      String(row['Awarding Agency']                ?? ''),
+        category,
+        alert: awardAmount >= ALERT_MIN_AMOUNT,
+      });
+    }
   }
 
   return results;

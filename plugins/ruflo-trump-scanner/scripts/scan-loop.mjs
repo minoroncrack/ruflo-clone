@@ -109,7 +109,9 @@ async function pollNewsArticles() {
 async function pollContracts() {
   try {
     console.log(`[${new Date().toISOString()}] Checking USASpending.gov...`);
-    const awards = await fetchRecentContracts(1);
+    // 7d, not 1d: USASpending lags and a 24h window always returns zero.
+    // seenAwardIds dedupes, so a wider window re-alerts nothing.
+    const awards = await fetchRecentContracts(7);
     if (!awards.length) { console.log('  No qualifying contracts.'); return; }
     console.log(`  ${awards.length} contract(s) found.`);
     for (const award of awards) {
