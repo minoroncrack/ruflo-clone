@@ -1,0 +1,12 @@
+# Runtime state and artifacts for the Trump trade scanner.
+# Scoped to this plugin: the repo root has tracked data/ directories, so these
+# patterns must not be added to the root .gitignore.
+
+# Seen-ID state + tunnel URL, rewritten on every poll. Includes backups.
+.state/
+
+# Feed cache, heartbeat, positions, quote history — all regenerated at runtime.
+data/
+
+# Downloaded binary, not a source artifact.
+ngrok.zip
