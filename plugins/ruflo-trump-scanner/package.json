@@ -5,10 +5,12 @@
   "type": "module",
   "scripts": {
     "scan": "node scripts/scan-loop.mjs",
+    "dashboard": "node scripts/dashboard-server.mjs",
     "test": "node scripts/test-alert.mjs"
   },
   "license": "MIT",
   "dependencies": {
-    "nodemailer": "^6.9.14"
+    "nodemailer": "^6.9.14",
+    "qrcode": "^1.5.4"
   }
 }
