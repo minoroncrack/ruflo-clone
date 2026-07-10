@@ -51,8 +51,11 @@ export function parseRss(xml) {
 export async function pollNews() {
   let xml;
   try {
+    // No default timeout in Node's fetch — bound it or a stalled connection
+    // wedges the news poller permanently.
     const resp = await fetch(NEWS_RSS, {
       headers: { 'User-Agent': 'Mozilla/5.0 (compatible; TrumpTradeScanner/1.0; +https://github.com/minoroncrack/ruflo-clone)' },
+      signal: AbortSignal.timeout(15_000),
     });
     if (!resp.ok) throw new Error(`News RSS ${resp.status}`);
     xml = await resp.text();

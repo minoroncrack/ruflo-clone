@@ -35,8 +35,11 @@ function parseRss(xml) {
 export async function pollTruthSocial() {
   let xml;
   try {
+    // Node's fetch has NO default timeout: a half-open connection hangs this
+    // poller forever while setInterval keeps firing new ones on top of it.
     const resp = await fetch(TRUMP_RSS, {
       headers: { 'User-Agent': 'Mozilla/5.0 (compatible; TrumpTradeScanner/1.0; +https://github.com/minoroncrack/ruflo-clone)' },
+      signal: AbortSignal.timeout(15_000),
     });
     if (!resp.ok) throw new Error(`RSS ${resp.status}`);
     xml = await resp.text();

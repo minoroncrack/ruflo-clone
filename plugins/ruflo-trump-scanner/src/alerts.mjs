@@ -25,6 +25,10 @@ async function sendEmail(c, subject, body, html) {
     host: c.smtpHost, port: c.smtpPort,
     secure: c.smtpPort === 465,
     auth: { user: c.smtpUser, pass: c.smtpPass },
+    // Without these an unresponsive SMTP peer stalls dispatch() indefinitely.
+    connectionTimeout: 15_000,
+    greetingTimeout: 10_000,
+    socketTimeout: 20_000,
   });
   await t.sendMail({ from: c.emailFrom, to: c.emailTo, subject, text: body, html });
 }
@@ -33,8 +37,11 @@ async function sendNtfy(c, subject, body, opts) {
   if (!c.ntfyTopic) return;
   // JSON publish endpoint (not header-based) so UTF-8/emoji in the title survives —
   // HTTP headers are restricted to ISO-8859-1 and throw on emoji otherwise.
+  // Bounded so a stalled ntfy connection cannot wedge dispatch() — the email
+  // has already been sent by the time this runs, and Promise.all would hang.
   await fetch('https://ntfy.sh', {
     method: 'POST',
+    signal: AbortSignal.timeout(15_000),
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       topic: c.ntfyTopic,
