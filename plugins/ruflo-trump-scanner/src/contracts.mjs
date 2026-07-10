@@ -61,10 +61,13 @@ async function queryAwards(naicsCodes, startDate, endDate) {
     order: 'desc',
   };
 
+  // Bounded: three of these run per poll, and an unbounded fetch would hang
+  // the contract poller with no error and no recovery.
   const resp = await fetch('https://api.usaspending.gov/api/v2/search/spending_by_award/', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),
+    signal: AbortSignal.timeout(25_000),
   });
 
   if (!resp.ok) throw new Error(`USASpending ${resp.status}: ${resp.statusText}`);
