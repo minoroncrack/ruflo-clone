@@ -15,8 +15,9 @@ import { fetchRecentContracts, formatContractAlert } from '../src/contracts.mjs'
 import { pollNews, formatNewsAlert }              from '../src/news.mjs';
 import { formatAlert, computeDirection }          from '../src/keywords.mjs';
 import { dispatch }                               from '../src/alerts.mjs';
-import { resolveArticleUrl }                     from '../src/resolve-url.mjs';
+import { resolveArticleUrl, fetchOgImage }       from '../src/resolve-url.mjs';
 import { pollApproval, formatPollAlert }         from '../src/polls.mjs';
+import { getQuotes }                             from '../src/quotes.mjs';
 import { hasSeenAward, markAwardSeen }            from '../src/state.mjs';
 import { writeFileSync, mkdirSync, existsSync }   from 'fs';
 import { join, dirname }                          from 'path';
@@ -51,6 +52,7 @@ async function pollPosts() {
     for (const r of results) {
       if (!r.alert) { console.log(`  Score ${r.totalScore}/100 — below threshold, skipping.`); continue; }
       const tickers = [...new Set(r.matches.map(m => m.extractedTicker).filter(Boolean))];
+      const quotes = await getQuotes(tickers);   // best-effort; null-priced on failure
       await dispatch(
         `🚨 TRUMP TRADE SIGNAL [${r.totalScore}/100] — ${tickers.slice(0, 3).join(', ') || 'market signal'}`,
         formatAlert(r),
@@ -63,6 +65,7 @@ async function pollPosts() {
           timestamp: r.postedAt,
           quote: r.postText,
           tickers,
+          quotes,
           keywords: r.matches.map(m => m.keyword),
           link: r.originalUrl,
         }
@@ -89,6 +92,15 @@ async function pollNewsArticles() {
       if (resolved !== r.link) console.log(`  Resolved link -> ${resolved.slice(0, 70)}`);
       r.link = resolved;
 
+      // Enrichment for the email body. Both are best-effort: fetchOgImage and
+      // getQuotes return null / null-priced entries on any failure, and the
+      // template degrades to a bare chip list. Run concurrently so a slow
+      // publisher never serialises with the quote lookups.
+      const [image, quotes] = await Promise.all([
+        fetchOgImage(r.link),
+        getQuotes(tickers),
+      ]);
+
       await dispatch(
         `📰 TRUMP NEWS SIGNAL [${r.totalScore}/100] — ${tickers.slice(0, 3).join(', ') || 'market signal'}`,
         formatNewsAlert(r),
@@ -101,6 +113,8 @@ async function pollNewsArticles() {
           timestamp: r.postedAt,
           quote: r.postText,
           tickers,
+          quotes,
+          image,
           keywords: r.matches.map(m => m.keyword),
           link: r.link,
         }
