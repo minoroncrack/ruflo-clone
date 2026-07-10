@@ -18,6 +18,7 @@ import { dispatch }                               from '../src/alerts.mjs';
 import { resolveArticleUrl, fetchOgImage }       from '../src/resolve-url.mjs';
 import { pollApproval, formatPollAlert }         from '../src/polls.mjs';
 import { getQuotes }                             from '../src/quotes.mjs';
+import { buildChartUrl }                         from '../src/chart.mjs';
 import { hasSeenAward, markAwardSeen }            from '../src/state.mjs';
 import { writeFileSync, mkdirSync, existsSync }   from 'fs';
 import { join, dirname }                          from 'path';
@@ -53,6 +54,7 @@ async function pollPosts() {
       if (!r.alert) { console.log(`  Score ${r.totalScore}/100 — below threshold, skipping.`); continue; }
       const tickers = [...new Set(r.matches.map(m => m.extractedTicker).filter(Boolean))];
       const quotes = await getQuotes(tickers);   // best-effort; null-priced on failure
+      const image = buildChartUrl(quotes);       // posts have no article, so chart or nothing
       await dispatch(
         `🚨 TRUMP TRADE SIGNAL [${r.totalScore}/100] — ${tickers.slice(0, 3).join(', ') || 'market signal'}`,
         formatAlert(r),
@@ -66,6 +68,7 @@ async function pollPosts() {
           quote: r.postText,
           tickers,
           quotes,
+          image,
           keywords: r.matches.map(m => m.keyword),
           link: r.originalUrl,
         }
@@ -96,10 +99,14 @@ async function pollNewsArticles() {
       // getQuotes return null / null-priced entries on any failure, and the
       // template degrades to a bare chip list. Run concurrently so a slow
       // publisher never serialises with the quote lookups.
-      const [image, quotes] = await Promise.all([
+      const [ogImage, quotes] = await Promise.all([
         fetchOgImage(r.link),
         getQuotes(tickers),
       ]);
+      // Publisher photo when there is one. Bing frequently resolves to
+      // msn.com, which serves a JS shell with no og:image at all, so fall back
+      // to an intraday sparkline of the very tickers the alert names.
+      const image = ogImage ?? buildChartUrl(quotes);
 
       await dispatch(
         `📰 TRUMP NEWS SIGNAL [${r.totalScore}/100] — ${tickers.slice(0, 3).join(', ') || 'market signal'}`,

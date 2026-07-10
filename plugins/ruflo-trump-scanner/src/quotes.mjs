@@ -20,17 +20,29 @@ function isPlausibleTicker(t) {
   return /^[A-Z][A-Z.\-]{0,5}$/.test(t);
 }
 
+/** Downsample a close series to at most `n` points, preserving first and last. */
+function downsample(values, n = 24) {
+  if (values.length <= n) return values;
+  const step = (values.length - 1) / (n - 1);
+  return Array.from({ length: n }, (_, i) => values[Math.round(i * step)]);
+}
+
 async function fetchQuote(ticker) {
   const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(ticker)}?range=1d&interval=5m`;
   const resp = await fetch(url, { headers: UA, signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) });
   if (!resp.ok) return null;
 
-  const meta = (await resp.json())?.chart?.result?.[0]?.meta;
+  const result = (await resp.json())?.chart?.result?.[0];
+  const meta = result?.meta;
   if (!meta?.regularMarketPrice) return null;
 
   const price = meta.regularMarketPrice;
   const prev = meta.chartPreviousClose ?? meta.previousClose ?? price;
   const changePct = prev ? ((price - prev) / prev) * 100 : 0;
+
+  // Intraday closes drive the email's sparkline chart. Nulls appear in thin
+  // trading; drop them rather than letting Chart.js render gaps.
+  const closes = (result?.indicators?.quote?.[0]?.close ?? []).filter(v => v != null);
 
   return {
     ticker,
@@ -38,6 +50,7 @@ async function fetchQuote(ticker) {
     price,
     changePct,
     currency: meta.currency ?? 'USD',
+    series: downsample(closes.map(v => Number(v.toFixed(2)))),
   };
 }
 
@@ -67,5 +80,7 @@ export async function getQuote(ticker) {
  */
 export async function getQuotes(tickers = []) {
   const unique = [...new Set(tickers.filter(Boolean).map(t => String(t).toUpperCase()))];
-  return Promise.all(unique.map(async t => (await getQuote(t)) ?? { ticker: t, name: '', price: null, changePct: null }));
+  return Promise.all(unique.map(async t =>
+    (await getQuote(t)) ?? { ticker: t, name: '', price: null, changePct: null, series: [] }
+  ));
 }
