@@ -16,6 +16,7 @@ import { pollNews, formatNewsAlert }              from '../src/news.mjs';
 import { formatAlert, computeDirection }          from '../src/keywords.mjs';
 import { dispatch }                               from '../src/alerts.mjs';
 import { resolveArticleUrl }                     from '../src/resolve-url.mjs';
+import { pollApproval, formatPollAlert }         from '../src/polls.mjs';
 import { hasSeenAward, markAwardSeen }            from '../src/state.mjs';
 import { writeFileSync, mkdirSync, existsSync }   from 'fs';
 import { join, dirname }                          from 'path';
@@ -32,6 +33,8 @@ function beat(source) {
 const POST_INTERVAL     = Number(process.env.POLL_INTERVAL_POSTS_MS     ?? 90_000);
 const CONTRACT_INTERVAL = Number(process.env.POLL_INTERVAL_CONTRACTS_MS ?? 900_000);
 const NEWS_INTERVAL     = Number(process.env.POLL_INTERVAL_NEWS_MS      ?? 300_000);
+// Approval polls publish ~1/day and arrive in bursts; hourly is ample.
+const POLLS_INTERVAL    = Number(process.env.POLL_INTERVAL_POLLS_MS     ?? 3_600_000);
 
 console.log('🚨 Trump Trade Scanner starting...');
 console.log(`  Truth Social : every ${POST_INTERVAL / 1000}s`);
@@ -137,12 +140,44 @@ async function pollContracts() {
   } catch (e) { console.error('Contract poll error:', e.message); }
 }
 
+async function pollApprovalPolls() {
+  try {
+    console.log(`[${new Date().toISOString()}] Checking approval polls...`);
+    beat('polls');
+    const results = await pollApproval();
+    if (!results.length) { console.log('  No qualifying poll movement.'); return; }
+    console.log(`  ${results.length} poll(s) with significant movement.`);
+    for (const r of results) {
+      const arrow = r.delta > 0 ? '📈' : '📉';
+      await dispatch(
+        `${arrow} TRUMP APPROVAL ${r.direction} — ${r.delta > 0 ? '+' : ''}${r.delta} pts (${r.pollster})`,
+        formatPollAlert(r),
+        {
+          emoji: arrow,
+          headline: 'APPROVAL SHIFT',
+          scoreLabel: `${r.delta > 0 ? '+' : ''}${r.delta} pts`,
+          direction: r.direction,
+          source: r.pollster,
+          timestamp: r.endDate,
+          quote: `Net approval ${r.net > 0 ? '+' : ''}${r.net}, was ${r.baseline > 0 ? '+' : ''}${r.baseline}`,
+          tickers: [],
+          keywords: [r.pollster, r.population].filter(Boolean),
+          link: r.url,
+          tags: ['bar_chart'],
+        }
+      );
+    }
+  } catch (e) { console.error('Poll check error:', e.message); }
+}
+
 // Run immediately then on interval
 await pollPosts();
 await pollContracts();
 await pollNewsArticles();
+await pollApprovalPolls();
 setInterval(pollPosts, POST_INTERVAL);
 setInterval(pollContracts, CONTRACT_INTERVAL);
 setInterval(pollNewsArticles, NEWS_INTERVAL);
+setInterval(pollApprovalPolls, POLLS_INTERVAL);
 
 process.on('SIGINT', () => { console.log('\nScanner stopped.'); process.exit(0); });
