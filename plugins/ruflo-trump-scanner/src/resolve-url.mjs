@@ -123,3 +123,35 @@ export async function resolveArticleUrl(headline, fallbackUrl) {
 
   return resolved ?? fallbackUrl;
 }
+
+/**
+ * fetchOgImage(articleUrl)
+ * Pulls the article's social-preview image for the alert email hero.
+ * Returns null on anything unexpected — never throws, never blocks a send.
+ * Skipped for google-news wrapper URLs, which have no useful preview.
+ */
+export async function fetchOgImage(articleUrl) {
+  if (!articleUrl || /news\.google\.com/i.test(articleUrl)) return null;
+
+  try {
+    const resp = await fetch(articleUrl, {
+      headers: { 'User-Agent': UA },
+      signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+    });
+    if (!resp.ok) return null;
+    const html = await resp.text();
+
+    const image =
+      html.match(/<meta[^>]+property=["']og:image["'][^>]+content=["']([^"']+)/i)?.[1] ??
+      html.match(/<meta[^>]+content=["']([^"']+)["'][^>]+property=["']og:image["']/i)?.[1] ??
+      html.match(/<meta[^>]+name=["']twitter:image["'][^>]+content=["']([^"']+)/i)?.[1];
+
+    if (!image) return null;
+
+    // Must be an absolute https URL: Gmail proxies images and drops the rest.
+    const abs = new URL(image, articleUrl).href;
+    return abs.startsWith('https://') ? abs : null;
+  } catch {
+    return null;
+  }
+}
