@@ -12,29 +12,98 @@
 
 import { pollTruthSocial }                       from '../src/truth-social.mjs';
 import { fetchRecentContracts, formatContractAlert } from '../src/contracts.mjs';
-import { formatAlert }                            from '../src/keywords.mjs';
+import { pollNews, formatNewsAlert }              from '../src/news.mjs';
+import { formatAlert, computeDirection }          from '../src/keywords.mjs';
 import { dispatch }                               from '../src/alerts.mjs';
+import { resolveArticleUrl }                     from '../src/resolve-url.mjs';
 import { hasSeenAward, markAwardSeen }            from '../src/state.mjs';
+import { writeFileSync, mkdirSync, existsSync }   from 'fs';
+import { join, dirname }                          from 'path';
+import { fileURLToPath }                          from 'url';
+
+process.loadEnvFile(join(dirname(fileURLToPath(import.meta.url)), '..', '.env'));
+
+const HEART = join(dirname(fileURLToPath(import.meta.url)), '..', 'data', 'heartbeat.json');
+function beat(source) {
+  try { const d = dirname(HEART); if (!existsSync(d)) mkdirSync(d, { recursive: true });
+    writeFileSync(HEART, JSON.stringify({ ts: Date.now(), source })); } catch {}
+}
 
 const POST_INTERVAL     = Number(process.env.POLL_INTERVAL_POSTS_MS     ?? 90_000);
 const CONTRACT_INTERVAL = Number(process.env.POLL_INTERVAL_CONTRACTS_MS ?? 900_000);
+const NEWS_INTERVAL     = Number(process.env.POLL_INTERVAL_NEWS_MS      ?? 300_000);
 
 console.log('🚨 Trump Trade Scanner starting...');
 console.log(`  Truth Social : every ${POST_INTERVAL / 1000}s`);
 console.log(`  USASpending  : every ${CONTRACT_INTERVAL / 1000}s`);
+console.log(`  News/Speeches: every ${NEWS_INTERVAL / 1000}s`);
 
 async function pollPosts() {
   try {
     console.log(`[${new Date().toISOString()}] Checking Truth Social...`);
+    beat('truth-social');
     const results = await pollTruthSocial();
     if (!results.length) { console.log('  No new posts.'); return; }
     console.log(`  ${results.length} new post(s).`);
     for (const r of results) {
       if (!r.alert) { console.log(`  Score ${r.totalScore}/100 — below threshold, skipping.`); continue; }
-      const tickers = [...new Set(r.matches.map(m => m.extractedTicker).filter(Boolean))].slice(0, 3).join(', ');
-      await dispatch(`🚨 TRUMP TRADE SIGNAL [${r.totalScore}/100] — ${tickers || 'market signal'}`, formatAlert(r));
+      const tickers = [...new Set(r.matches.map(m => m.extractedTicker).filter(Boolean))];
+      await dispatch(
+        `🚨 TRUMP TRADE SIGNAL [${r.totalScore}/100] — ${tickers.slice(0, 3).join(', ') || 'market signal'}`,
+        formatAlert(r),
+        {
+          emoji: '🚨',
+          headline: 'TRUMP TRADE SIGNAL',
+          scoreLabel: `${r.totalScore}/100`,
+          direction: computeDirection(r.matches),
+          source: 'Truth Social',
+          timestamp: r.postedAt,
+          quote: r.postText,
+          tickers,
+          keywords: r.matches.map(m => m.keyword),
+          link: r.originalUrl,
+        }
+      );
     }
   } catch (e) { console.error('Post poll error:', e.message); }
+}
+
+async function pollNewsArticles() {
+  try {
+    console.log(`[${new Date().toISOString()}] Checking news/speeches...`);
+    beat('news');
+    const results = await pollNews();
+    if (!results.length) { console.log('  No new articles.'); return; }
+    console.log(`  ${results.length} new article(s).`);
+    for (const r of results) {
+      if (!r.alert) { console.log(`  Score ${r.totalScore}/100 — below threshold, skipping.`); continue; }
+      const tickers = [...new Set(r.matches.map(m => m.extractedTicker).filter(Boolean))];
+
+      // Only alerts get their link unwrapped (~7/day), never every polled item.
+      // Returns the original Google URL on any miss/timeout, so this can slow a
+      // notification slightly but can never prevent or misdirect one.
+      const resolved = await resolveArticleUrl(r.postText, r.link);
+      if (resolved !== r.link) console.log(`  Resolved link -> ${resolved.slice(0, 70)}`);
+      r.link = resolved;
+
+      await dispatch(
+        `📰 TRUMP NEWS SIGNAL [${r.totalScore}/100] — ${tickers.slice(0, 3).join(', ') || 'market signal'}`,
+        formatNewsAlert(r),
+        {
+          emoji: '📰',
+          headline: 'TRUMP NEWS SIGNAL',
+          scoreLabel: `${r.totalScore}/100`,
+          direction: computeDirection(r.matches),
+          source: r.source,
+          timestamp: r.postedAt,
+          quote: r.postText,
+          tickers,
+          keywords: r.matches.map(m => m.keyword),
+          link: r.link,
+        }
+      );
+    }
+  } catch (e) { console.error('News poll error:', e.message); }
 }
 
 async function pollContracts() {
@@ -47,7 +116,21 @@ async function pollContracts() {
       if (hasSeenAward(award.awardId)) continue;
       markAwardSeen(award.awardId);
       const amt = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(award.awardAmount);
-      await dispatch(`🛡️ CONTRACT WIN — ${award.recipientName} — ${amt}`, formatContractAlert(award));
+      const emoji = award.category === 'defense' ? '🛡️' : award.category === 'medical' ? '💊' : '💻';
+      await dispatch(
+        `${emoji} CONTRACT WIN — ${award.recipientName} — ${amt}`,
+        formatContractAlert(award),
+        {
+          emoji,
+          headline: 'CONTRACT WIN',
+          scoreLabel: amt,
+          source: award.agencyName,
+          timestamp: award.awardDate,
+          quote: award.description || `${award.recipientName} — ${award.naicsDescription}`,
+          tickers: [award.category.toUpperCase(), award.naicsCode],
+          keywords: [award.recipientState, award.naicsDescription].filter(Boolean),
+        }
+      );
     }
   } catch (e) { console.error('Contract poll error:', e.message); }
 }
@@ -55,7 +138,9 @@ async function pollContracts() {
 // Run immediately then on interval
 await pollPosts();
 await pollContracts();
+await pollNewsArticles();
 setInterval(pollPosts, POST_INTERVAL);
 setInterval(pollContracts, CONTRACT_INTERVAL);
+setInterval(pollNewsArticles, NEWS_INTERVAL);
 
 process.on('SIGINT', () => { console.log('\nScanner stopped.'); process.exit(0); });

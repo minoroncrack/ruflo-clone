@@ -8,7 +8,7 @@ import { fileURLToPath } from 'url';
 
 const DIR   = join(dirname(fileURLToPath(import.meta.url)), '..', '.state');
 const FILE  = join(DIR, 'seen.json');
-const EMPTY = { seenPostIds: [], seenAwardIds: [] };
+const EMPTY = { seenPostIds: [], seenAwardIds: [], seenNewsIds: [] };
 
 function load() {
   try { return existsSync(FILE) ? JSON.parse(readFileSync(FILE, 'utf-8')) : { ...EMPTY }; }
@@ -20,7 +20,9 @@ function save(s) {
   writeFileSync(FILE, JSON.stringify(s, null, 2));
 }
 
-export function hasSeenPost(id)   { return load().seenPostIds.includes(id); }
-export function markPostSeen(id)  { const s = load(); s.seenPostIds  = [id, ...s.seenPostIds].slice(0, 5000);  save(s); }
-export function hasSeenAward(id)  { return load().seenAwardIds.includes(id); }
-export function markAwardSeen(id) { const s = load(); s.seenAwardIds = [id, ...s.seenAwardIds].slice(0, 5000); save(s); }
+export function hasSeenPost(id)   { return (load().seenPostIds ?? []).includes(id); }
+export function markPostSeen(id)  { const s = load(); s.seenPostIds  = [id, ...(s.seenPostIds  ?? [])].slice(0, 5000); save(s); }
+export function hasSeenAward(id)  { return (load().seenAwardIds ?? []).includes(id); }
+export function markAwardSeen(id) { const s = load(); s.seenAwardIds = [id, ...(s.seenAwardIds ?? [])].slice(0, 5000); save(s); }
+export function hasSeenNews(id)   { return (load().seenNewsIds ?? []).includes(id); }
+export function markNewsSeen(id)  { const s = load(); s.seenNewsIds  = [id, ...(s.seenNewsIds  ?? [])].slice(0, 5000); save(s); }
