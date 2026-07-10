@@ -6,7 +6,11 @@
  * Usage: node scripts/test-alert.mjs
  */
 
+import { join, dirname } from 'path';
+import { fileURLToPath } from 'url';
 import { dispatch } from '../src/alerts.mjs';
+
+process.loadEnvFile(join(dirname(fileURLToPath(import.meta.url)), '..', '.env'));
 
 await dispatch(
   '🚨 TRUMP TRADE SIGNAL [85/100] — ITA, LMT, defense [TEST]',
